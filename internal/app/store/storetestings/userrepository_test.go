@@ -15,9 +15,7 @@ func TestUserReposit_Create(t *testing.T) {
 
 	defer teardown("users")
 
-	user, err := store.GetUser().Create(&models.User{
-		Email: "user@example.com",
-	})
+	user, err := store.GetUser().Create(models.TestUser(t))
 
 	assert.NoError(t, err)
 	assert.NotNil(t, user)
@@ -33,9 +31,10 @@ func TestUserReposit_FindeByEmail(t *testing.T) {
 	_, err := store.GetUser().FindByEmail(email)
 	assert.Error(t, err)
 
-	store.GetUser().Create(&models.User{
-		Email: "user@example.com",
-	})
+	u := models.TestUser(t)
+	u.Email = email
+
+	store.GetUser().Create(u)
 
 	user, err := store.GetUser().FindByEmail(email)
 	assert.NoError(t, err)
