@@ -1,64 +1,7 @@
 package store
 
-import (
-	"database/sql"
-
-	_ "github.com/lib/pq" // ...
-)
-
 // Store ...
-type Store struct {
-	config     *Config
-	db         *sql.DB
-	repository *UserRepository
-}
 
-// New instance ...
-func New(config *Config) *Store {
-	return &Store{
-		config: config,
-	}
-}
-
-// Open store ...
-
-func (s *Store) Open() error {
-	db, err := sql.Open("postgres", s.config.DatabaseURL)
-
-	if err != nil {
-		return err
-	}
-
-	if err := db.Ping(); err != nil {
-		return err
-	}
-
-	s.db = db
-
-	return nil
-}
-
-func (s *Store) DB() *sql.DB {
-	if s.db != nil {
-		return s.db
-	}
-
-	return nil
-}
-
-// Close store ...
-func (s *Store) Close() {
-	s.db.Close()
-}
-
-func (s *Store) GetUser() *UserRepository {
-	if s.repository != nil {
-		return s.repository
-	}
-
-	s.repository = &UserRepository{
-		store: s,
-	}
-
-	return s.repository
+type Store interface {
+	User() UserRepository
 }
