@@ -8,7 +8,7 @@ import (
 // Mock UserRepository ...
 type UserRepository struct {
 	store *Store
-	users map[string]*models.User
+	users map[int]*models.User
 }
 
 // Mock Create ...
@@ -22,17 +22,26 @@ func (r *UserRepository) Create(model *models.User) error {
 		return err
 	}
 
-	r.users[model.Email] = model
-
-	model.ID = len(r.users)
+	model.ID = len(r.users) + 1
+	r.users[model.ID] = model
 
 	return nil
 }
 
 // Mock FindByEmail ...
 func (r *UserRepository) FindByEmail(email string) (*models.User, error) {
+	for _, u := range r.users {
+		if u.Email == email {
+			return u, nil
+		}
+	}
 
-	u, ok := r.users[email]
+	return nil, store.ErrRecordNotFoud
+}
+
+func (r *UserRepository) Find(id int) (*models.User, error) {
+
+	u, ok := r.users[id]
 	if !ok {
 		return nil, store.ErrRecordNotFoud
 	}

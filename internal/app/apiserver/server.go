@@ -1,16 +1,22 @@
 package apiserver
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/GuseynovAnar/rest_api.git/internal/app/models"
 	"github.com/GuseynovAnar/rest_api.git/internal/app/store"
+	"github.com/google/uuid"
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/sirupsen/logrus"
 )
+
+type cntxKey int8
 
 type server struct {
 	router       *mux.Router
@@ -21,10 +27,13 @@ type server struct {
 
 var (
 	errIncorrectEmailOrPassword = errors.New("incorrect email or password")
+	errNotAuthenticated         = errors.New("not authenticated user")
 )
 
 const (
-	sessionName = "ExampleServerSession"
+	sessionName            = "ExampleServerSession"
+	contextKeyUser cntxKey = iota
+	contextKeyRequestId
 )
 
 func newServer(store store.Store, sessionStore sessions.Store) *server {
@@ -46,10 +55,88 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }
 
+// Middleware func
+
+func (s *server) authenticateUser(next http.Handler) http.Handler {
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			session, err := s.sessionStore.Get(r, sessionName)
+			if err != nil {
+				s.error(w, r, http.StatusInternalServerError, err)
+				return
+			}
+
+			id, ok := session.Values["user_id"]
+
+			if !ok {
+				s.error(w, r, http.StatusUnauthorized, errNotAuthenticated)
+				return
+			}
+
+			u, err := s.store.User().Find(id.(int))
+
+			if err != nil {
+				s.error(w, r, http.StatusUnauthorized, errNotAuthenticated)
+				return
+			}
+
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKeyUser, u)))
+		})
+}
+
 func (s *server) configureRouter() {
+	s.router.Use(s.setRequestID)
+	s.router.Use(s.loggRequest)
+	s.router.Use(handlers.CORS(handlers.AllowedOrigins([]string{"*"}))) // cors
+
 	s.router.HandleFunc("/users", s.handleUsersCreate()).Methods("POST")
 	s.router.HandleFunc("/sessions", s.handleUserSessionsCreate()).Methods("POST")
+
+	// ~private/***
+	privateR := s.router.PathPrefix("/private").Subrouter()
+	privateR.Use(s.authenticateUser)
+	privateR.HandleFunc("/whoami", s.handleWhoami()).Methods("GET")
 }
+
+func (s *server) handleWhoami() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.respond(w, r, http.StatusOK, r.Context().Value(contextKeyUser).(*models.User))
+	}
+}
+
+func (s *server) setRequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := uuid.New().String()
+		w.Header().Set("X-Request-ID", id)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKeyRequestId, id)))
+	})
+}
+
+func (s *server) loggRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		logger := logrus.WithFields(logrus.Fields{
+			"remote_addr": r.RemoteAddr,
+			"request_id":  r.Context().Value(contextKeyRequestId),
+		})
+
+		logger.Infof("started %s %s", r.Method, r.RequestURI)
+
+		start := time.Now()
+		rw := &responseWriter{w, http.StatusOK}
+
+		next.ServeHTTP(w, r)
+
+		logger.Infof(
+			"completed with %d %s in %v",
+			rw.statusCode,
+			http.StatusText(rw.statusCode),
+			time.Since(start),
+		)
+	})
+}
+
+// Handlers ...
 
 func (s *server) handleUsersCreate() http.HandlerFunc {
 

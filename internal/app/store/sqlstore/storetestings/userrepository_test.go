@@ -44,6 +44,27 @@ func TestUserRepository_FindeByEmailWithDB(t *testing.T) {
 	assert.NotNil(t, user)
 }
 
+func TestUserRepository_FindeByIdWithDB(t *testing.T) {
+	db, teardown := sqlstoretestings.TestDB(t, sqlstoretestings.DatabaseURL)
+
+	defer teardown("users")
+
+	s := sqlstore.New(db)
+	id := 1
+
+	_, err := s.User().Find(id)
+	assert.EqualError(t, err, store.ErrRecordNotFoud.Error())
+
+	u := models.TestUser(t)
+	u.ID = id
+
+	s.User().Create(u)
+
+	user, err := s.User().Find(u.ID)
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
+}
+
 func TestUserRepository_CreateMock(t *testing.T) {
 
 	s := mocks.New()
@@ -66,6 +87,23 @@ func TestUserRepository_FindeByEmailMock(t *testing.T) {
 	s.User().Create(u)
 
 	user, err := s.User().FindByEmail(email)
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
+}
+
+func TestUserRepository_FindeByIDMock(t *testing.T) {
+	s := mocks.New()
+	id := 1
+
+	_, err := s.User().Find(id)
+	assert.EqualError(t, err, store.ErrRecordNotFoud.Error())
+
+	u := models.TestUser(t)
+	u.ID = id
+
+	s.User().Create(u)
+
+	user, err := s.User().Find(u.ID)
 	assert.NoError(t, err)
 	assert.NotNil(t, user)
 }
